@@ -26,10 +26,11 @@ install:
 script:
   - tox -v -- -v
 after_success:
-  - .tox/$TRAVIS_PYTHON_VERSION/bin/coveralls
+  - .tox/$TRAVIS_PYTHON_VERSION/bin/coverage xml
+  - .tox/$TRAVIS_PYTHON_VERSION/bin/codecov -e TOXENV
 notifications:
   irc:
     channels:
       - "chat.freenode.net#celery"
-    on_success: always
-    on_failure: always
+    on_success: change
+    on_failure: change

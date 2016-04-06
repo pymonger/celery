@@ -227,7 +227,7 @@ class Worker(WorkController):
             hostname=safe_str(self.hostname),
             version=VERSION_BANNER,
             conninfo=self.app.connection().as_uri(),
-            results=self.app.conf.CELERY_RESULT_BACKEND or 'disabled',
+            results=self.app.backend.as_uri(),
             concurrency=concurrency,
             platform=safe_str(_platform.platform()),
             events=events,
@@ -313,7 +313,8 @@ if not is_jython:  # pragma: no cover
         _shutdown_handler, sig='SIGINT', callback=on_SIGINT
     )
 else:  # pragma: no cover
-    install_worker_int_handler = lambda *a, **kw: None
+    def install_worker_int_handler(*a, **kw):
+        pass
 
 
 def _reload_current_worker():

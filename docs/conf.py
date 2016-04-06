@@ -10,7 +10,7 @@ this = os.path.dirname(os.path.abspath(__file__))
 # absolute, like shown here.
 sys.path.insert(0, os.path.join(this, os.pardir))
 sys.path.append(os.path.join(this, '_ext'))
-import celery
+import celery  # noqa
 
 # General configuration
 # ---------------------
@@ -54,7 +54,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'Celery'
-copyright = '2009-2014, Ask Solem & Contributors'
+copyright = '2009-2015, Ask Solem & Contributors'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -67,10 +67,10 @@ release = celery.__version__
 
 exclude_trees = ['.build']
 
-#unused_docs = [
-#    'xreftest.rst',
-#    'tutorials/otherqueues',
-#]
+unused_docs = [
+    'xreftest.rst',
+    'tutorials/otherqueues',
+]
 
 # If true, '()' will be appended to :func: etc. cross-reference text.
 add_function_parentheses = True
@@ -115,7 +115,7 @@ html_sidebars = {
            'sourcelink.html', 'searchbox.html'],
 }
 
-### Issuetracker
+# ### Issuetracker
 
 github_project = 'celery/celery'
 
@@ -125,7 +125,7 @@ github_project = 'celery/celery'
 epub_title = 'Celery Manual, Version {0}'.format(version)
 epub_author = 'Ask Solem'
 epub_publisher = 'Celery Project'
-epub_copyright = '2009-2014'
+epub_copyright = '2009-2015'
 
 # The language of the text. It defaults to the language option
 # or en if the language is not set.
@@ -140,14 +140,6 @@ epub_identifier = 'celeryproject.org'
 
 # A unique identification for the text.
 epub_uid = 'Celery Manual, Version {0}'.format(version)
-
-# HTML files that should be inserted before the pages created by sphinx.
-# The format is a list of tuples containing the path and title.
-#epub_pre_files = []
-
-# HTML files shat should be inserted after the pages created by sphinx.
-# The format is a list of tuples containing the path and title.
-#epub_post_files = []
 
 # A list of files that should not be packed into the epub file.
 epub_exclude_files = ['search.html']

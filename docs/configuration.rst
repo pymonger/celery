@@ -164,6 +164,12 @@ workers, note that the first worker to start will receive four times the
 number of messages initially.  Thus the tasks may not be fairly distributed
 to the workers.
 
+To disable prefetching, set CELERYD_PREFETCH_MULTIPLIER to 1.  Setting 
+CELERYD_PREFETCH_MULTIPLIER to 0 will allow the worker to keep consuming
+as many messages as it wants.
+
+For more on prefetching, read :ref:`optimizing-prefetch-limit`
+
 .. note::
 
     Tasks with ETA/countdown are not affected by prefetch limits.
@@ -183,9 +189,17 @@ The backend used to store task results (tombstones).
 Disabled by default.
 Can be one of the following:
 
+* rpc
+    Send results back as AMQP messages
+    See :ref:`conf-rpc-result-backend`.
+
 * database
     Use a relational database supported by `SQLAlchemy`_.
     See :ref:`conf-database-result-backend`.
+
+* redis
+    Use `Redis`_ to store the results.
+    See :ref:`conf-redis-result-backend`.
 
 * cache
     Use `memcached`_ to store the results.
@@ -194,14 +208,6 @@ Can be one of the following:
 * mongodb
     Use `MongoDB`_ to store the results.
     See :ref:`conf-mongodb-result-backend`.
-
-* redis
-    Use `Redis`_ to store the results.
-    See :ref:`conf-redis-result-backend`.
-
-* amqp
-    Send results back as AMQP messages
-    See :ref:`conf-amqp-result-backend`.
 
 * cassandra
     Use `Cassandra`_ to store the results.
@@ -214,6 +220,10 @@ Can be one of the following:
 * couchbase
     Use `Couchbase`_ to store the results.
     See :ref:`conf-couchbase-result-backend`.
+
+* amqp
+    Older AMQP backend (badly) emulating a database-based backend.
+    See :ref:`conf-amqp-result-backend`.
 
 .. warning:
 
@@ -254,7 +264,7 @@ prefix:
 
     CELERY_RESULT_BACKEND = 'db+scheme://user:password@host:port/dbname'
 
-Examples:
+Examples::
 
     # sqlite (filename)
     CELERY_RESULT_BACKEND = 'db+sqlite:///results.sqlite'
@@ -330,35 +340,12 @@ you to customize the table names:
         'group': 'myapp_groupmeta',
     }
 
+.. _conf-rpc-result-backend:
+
+RPC backend settings
+--------------------
+
 .. _conf-amqp-result-backend:
-
-AMQP backend settings
----------------------
-
-.. note::
-
-    The AMQP backend requires RabbitMQ 1.1.0 or higher to automatically
-    expire results.  If you are running an older version of RabbitmQ
-    you should disable result expiration like this:
-
-        CELERY_TASK_RESULT_EXPIRES = None
-
-.. setting:: CELERY_RESULT_EXCHANGE
-
-CELERY_RESULT_EXCHANGE
-~~~~~~~~~~~~~~~~~~~~~~
-
-Name of the exchange to publish results in.  Default is `celeryresults`.
-
-.. setting:: CELERY_RESULT_EXCHANGE_TYPE
-
-CELERY_RESULT_EXCHANGE_TYPE
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The exchange type of the result exchange.  Default is to use a `direct`
-exchange.
-
-.. setting:: CELERY_RESULT_PERSISTENT
 
 CELERY_RESULT_PERSISTENT
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -372,8 +359,9 @@ Example configuration
 
 .. code-block:: python
 
-    CELERY_RESULT_BACKEND = 'amqp'
-    CELERY_TASK_RESULT_EXPIRES = 18000  # 5 hours.
+    CELERY_RESULT_BACKEND = 'rpc://'
+    CELERY_RESULT_PERSISTENT = False
+
 
 .. _conf-cache-result-backend:
 
@@ -403,6 +391,9 @@ Using multiple memcached servers:
 
 The "memory" backend stores the cache in memory only:
 
+.. code-block:: python
+
+    CELERY_RESULT_BACKEND = 'cache'
     CELERY_CACHE_BACKEND = 'memory'
 
 CELERY_CACHE_BACKEND_OPTIONS
@@ -704,6 +695,55 @@ This is a dict supporting the following keys:
 * password
     Password to authenticate to the Couchbase server (optional).
 
+AMQP backend settings
+---------------------
+
+.. admonition:: Do not use in production.
+
+    This is the old AMQP result backend that creates one queue per task,
+    if you want to send results back as message please consider using the
+    RPC backend instead, or if you need the results to be persistent
+    use a result backend designed for that purpose (e.g. Redis, or a database).
+
+.. note::
+
+    The AMQP backend requires RabbitMQ 1.1.0 or higher to automatically
+    expire results.  If you are running an older version of RabbitMQ
+    you should disable result expiration like this:
+
+        CELERY_TASK_RESULT_EXPIRES = None
+
+.. setting:: CELERY_RESULT_EXCHANGE
+
+CELERY_RESULT_EXCHANGE
+~~~~~~~~~~~~~~~~~~~~~~
+
+Name of the exchange to publish results in.  Default is `celeryresults`.
+
+.. setting:: CELERY_RESULT_EXCHANGE_TYPE
+
+CELERY_RESULT_EXCHANGE_TYPE
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The exchange type of the result exchange.  Default is to use a `direct`
+exchange.
+
+.. setting:: CELERY_RESULT_PERSISTENT
+
+CELERY_RESULT_PERSISTENT
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+If set to :const:`True`, result messages will be persistent.  This means the
+messages will not be lost after a broker restart.  The default is for the
+results to be transient.
+
+Example configuration
+~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    CELERY_RESULT_BACKEND = 'amqp'
+    CELERY_TASK_RESULT_EXPIRES = 18000  # 5 hours.
 
 .. _conf-messaging:
 
@@ -732,6 +772,8 @@ Also see :ref:`routing-basics` for more information.
 The default is a queue/exchange/binding key of ``celery``, with
 exchange type ``direct``.
 
+See also :setting:`CELERY_ROUTES`
+
 .. setting:: CELERY_ROUTES
 
 CELERY_ROUTES
@@ -739,7 +781,91 @@ CELERY_ROUTES
 
 A list of routers, or a single router used to route tasks to queues.
 When deciding the final destination of a task the routers are consulted
-in order.  See :ref:`routers` for more information.
+in order.
+
+A router can be specified as either:
+
+*  A router class instances
+*  A string which provides the path to a router class
+*  A dict containing router specification. It will be converted to a :class:`celery.routes.MapRoute` instance.
+
+Examples:
+
+.. code-block:: python
+
+    CELERY_ROUTES = {"celery.ping": "default",
+                     "mytasks.add": "cpu-bound",
+                     "video.encode": {
+                         "queue": "video",
+                         "exchange": "media"
+                         "routing_key": "media.video.encode"}}
+
+    CELERY_ROUTES = ("myapp.tasks.Router", {"celery.ping": "default})
+
+Where ``myapp.tasks.Router`` could be:
+
+.. code-block:: python
+
+    class Router(object):
+
+        def route_for_task(self, task, args=None, kwargs=None):
+            if task == "celery.ping":
+                return "default"
+
+``route_for_task`` may return a string or a dict. A string then means
+it's a queue name in :setting:`CELERY_QUEUES`, a dict means it's a custom route.
+
+When sending tasks, the routers are consulted in order. The first
+router that doesn't return ``None`` is the route to use. The message options
+is then merged with the found route settings, where the routers settings
+have priority.
+
+Example if :func:`~celery.execute.apply_async` has these arguments:
+
+.. code-block:: python
+
+   Task.apply_async(immediate=False, exchange="video",
+                    routing_key="video.compress")
+
+and a router returns:
+
+.. code-block:: python
+
+    {"immediate": True, "exchange": "urgent"}
+
+the final message options will be:
+
+.. code-block:: python
+
+    immediate=True, exchange="urgent", routing_key="video.compress"
+
+(and any default message options defined in the
+:class:`~celery.task.base.Task` class)
+
+Values defined in :setting:`CELERY_ROUTES` have precedence over values defined in
+:setting:`CELERY_QUEUES` when merging the two.
+
+With the follow settings:
+
+.. code-block:: python
+
+    CELERY_QUEUES = {"cpubound": {"exchange": "cpubound",
+                                  "routing_key": "cpubound"}}
+
+    CELERY_ROUTES = {"tasks.add": {"queue": "cpubound",
+                                   "routing_key": "tasks.add",
+                                   "serializer": "json"}}
+
+The final routing options for ``tasks.add`` will become:
+
+.. code-block:: python
+
+    {"exchange": "cpubound",
+     "routing_key": "tasks.add",
+     "serializer": "json"}
+
+See :ref:`routers` for more examples.
+
 
 .. setting:: CELERY_QUEUE_HA_POLICY
 
@@ -930,6 +1056,20 @@ default is ``amqp``, which uses ``librabbitmq`` by default or falls back to
 ``couchdb``.
 It can also be a fully qualified path to your own transport implementation.
 
+More than broker URL, of the same transport, can also be specified.
+The broker URLs can be passed in as a single string that is semicolon delimited::
+
+    BROKER_URL = 'transport://userid:password@hostname:port//;transport://userid:password@hostname:port//'
+
+Or as a list::
+
+    BROKER_URL = [
+        'transport://userid:password@localhost:port//',
+        'transport://userid:password@hostname:port//'
+    ]
+
+The brokers will then be used in the :setting:`BROKER_FAILOVER_STRATEGY`.
+
 See :ref:`kombu:connection-urls` in the Kombu documentation for more
 information.
 
@@ -968,9 +1108,40 @@ will be performed every 5 seconds (twice the heartbeat sending rate).
 
 BROKER_USE_SSL
 ~~~~~~~~~~~~~~
+:transports supported: ``pyamqp``
 
-Use SSL to connect to the broker.  Off by default.  This may not be supported
-by all transports.
+
+Toggles SSL usage on broker connection and SSL settings.
+
+If ``True`` the connection will use SSL with default SSL settings.
+If set to a dict, will configure SSL connection according to the specified
+policy. The format used is python `ssl.wrap_socket()
+options <https://docs.python.org/3/library/ssl.html#ssl.wrap_socket>`_.
+
+Default is ``False`` (no SSL).
+
+Note that SSL socket is generally served on a separate port by the broker.
+
+Example providing a client cert and validating the server cert against a custom
+certificate authority:
+
+.. code-block:: python
+
+    import ssl
+
+    BROKER_USE_SSL = {
+      'keyfile': '/var/ssl/private/worker-key.pem',
+      'certfile': '/var/ssl/amqp-server-cert.pem',
+      'ca_certs': '/var/ssl/myca.pem',
+      'cert_reqs': ssl.CERT_REQUIRED
+    }
+
+.. warning::
+
+    Be careful using ``BROKER_USE_SSL=True``.  It is possible that your default
+    configuration will not validate the server cert at all.  Please read Python
+    `ssl module security
+    considerations <https://docs.python.org/3/library/ssl.html#ssl-security>`_.
 
 .. setting:: BROKER_POOL_LIMIT
 
@@ -1132,7 +1303,7 @@ CELERY_MAX_CACHED_RESULTS
 Result backends caches ready results used by the client.
 
 This is the total number of results to cache before older results are evicted.
-The default is 5000.  0 or None means no limit, and a value of :const:`-1`
+The default is 100.  0 or None means no limit, and a value of :const:`-1`
 will disable the cache.
 
 .. setting:: CELERY_CHORD_PROPAGATES
@@ -1696,8 +1867,9 @@ Name of the pool class used by the worker.
 .. admonition:: Eventlet/Gevent
 
     Never use this option to select the eventlet or gevent pool.
-    You must use the `-P` option instead, otherwise the monkey patching
-    will happen too late and things will break in strange and silent ways.
+    You must use the `-P` option to :program:`celery worker` instead, to
+    ensure the monkey patches are not applied too late, causing things
+    to break in strange ways.
 
 Default is ``celery.concurrency.prefork:TaskPool``.
 

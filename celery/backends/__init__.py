@@ -9,9 +9,9 @@
 from __future__ import absolute_import
 
 import sys
+import types
 
-from kombu.utils.url import _parse_url
-
+from celery.exceptions import ImproperlyConfigured
 from celery.local import Proxy
 from celery._state import current_app
 from celery.five import reraise
@@ -46,18 +46,23 @@ def get_backend_cls(backend=None, loader=None):
     loader = loader or current_app.loader
     aliases = dict(BACKEND_ALIASES, **loader.override_backends)
     try:
-        return symbol_by_name(backend, aliases)
+        cls = symbol_by_name(backend, aliases)
     except ValueError as exc:
-        reraise(ValueError, ValueError(UNKNOWN_BACKEND.format(
-            backend, exc)), sys.exc_info()[2])
+        reraise(ImproperlyConfigured, ImproperlyConfigured(
+            UNKNOWN_BACKEND.format(backend, exc)), sys.exc_info()[2])
+    if isinstance(cls, types.ModuleType):
+        raise ImproperlyConfigured(UNKNOWN_BACKEND.format(
+            backend, 'is a Python module, not a backend class.'))
+    return cls
 
 
 def get_backend_by_url(backend=None, loader=None):
     url = None
     if backend and '://' in backend:
         url = backend
-        if '+' in url[:url.index('://')]:
+        scheme, _, _ = url.partition('://')
+        if '+' in scheme:
             backend, url = url.split('+', 1)
         else:
-            backend, _, _, _, _, _, _ = _parse_url(url)
+            backend = scheme
     return get_backend_cls(backend, loader), url

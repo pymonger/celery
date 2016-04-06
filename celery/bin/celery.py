@@ -115,7 +115,8 @@ class list_(Command):
         except NotImplementedError:
             raise self.Error('Your transport cannot list bindings.')
 
-        fmt = lambda q, e, r: self.out('{0:<28} {1:<28} {2}'.format(q, e, r))
+        def fmt(q, e, r):
+            return self.out('{0:<28} {1:<28} {2}'.format(q, e, r))
         fmt('Queue', 'Exchange', 'Routing Key')
         fmt('-' * 16, '-' * 16, '-' * 16)
         for b in bindings:
@@ -612,12 +613,35 @@ class shell(Command):  # pragma: no cover
         code.interact(local=self.locals)
 
     def invoke_ipython_shell(self):
-        try:
-            from IPython.terminal import embed
-            embed.TerminalInteractiveShell(user_ns=self.locals).mainloop()
-        except ImportError:  # ipython < 0.11
-            from IPython.Shell import IPShell
-            IPShell(argv=[], user_ns=self.locals).mainloop()
+        for ip in (self._ipython, self._ipython_pre_10,
+                   self._ipython_terminal, self._ipython_010,
+                   self._no_ipython):
+            try:
+                return ip()
+            except ImportError:
+                pass
+
+    def _ipython(self):
+        from IPython import start_ipython
+        start_ipython(argv=[], user_ns=self.locals)
+
+    def _ipython_pre_10(self):  # pragma: no cover
+        from IPython.frontend.terminal.ipapp import TerminalIPythonApp
+        app = TerminalIPythonApp.instance()
+        app.initialize(argv=[])
+        app.shell.user_ns.update(self.locals)
+        app.start()
+
+    def _ipython_terminal(self):  # pragma: no cover
+        from IPython.terminal import embed
+        embed.TerminalInteractiveShell(user_ns=self.locals).mainloop()
+
+    def _ipython_010(self):  # pragma: no cover
+        from IPython.Shell import IPShell
+        IPShell(argv=[], user_ns=self.locals).mainloop()
+
+    def _no_ipython(self):  # pragma: no cover
+        raise ImportError("no suitable ipython found")
 
     def invoke_bpython_shell(self):
         import bpython

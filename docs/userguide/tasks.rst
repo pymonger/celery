@@ -150,7 +150,7 @@ if the module name is "tasks.py":
 Automatic naming and relative imports
 -------------------------------------
 
-Relative imports and automatic name generation does not go well together,
+Relative imports and automatic name generation do not go well together,
 so if you're using relative imports you should set the name explicitly.
 
 For example if the client imports the module "myapp.tasks" as ".tasks", and
@@ -555,7 +555,7 @@ General
 
     Example: `"100/m"` (hundred tasks a minute). This will enforce a minimum
     delay of 600ms between starting two tasks on the same worker instance.
-    
+
     Default is the :setting:`CELERY_DEFAULT_RATE_LIMIT` setting,
     which if not specified means rate limiting for tasks is disabled by default.
 
@@ -600,7 +600,7 @@ General
 
     A string identifying the default serialization
     method to use. Defaults to the :setting:`CELERY_TASK_SERIALIZER`
-    setting.  Can be `pickle` `json`, `yaml`, or any custom
+    setting.  Can be `pickle`, `json`, `yaml`, or any custom
     serialization methods that have been registered with
     :mod:`kombu.serialization.registry`.
 
@@ -618,8 +618,9 @@ General
 
 .. attribute:: Task.backend
 
-    The result store backend to use for this task.  Defaults to the
-    :setting:`CELERY_RESULT_BACKEND` setting.
+    The result store backend to use for this task. An instance of one of the
+    backend classes in `celery.backends`. Defaults to `app.backend` which is
+    defined by the :setting:`CELERY_RESULT_BACKEND` setting.
 
 .. attribute:: Task.acks_late
 
@@ -693,48 +694,31 @@ Result Backends
 If you want to keep track of tasks or need the return values, then Celery
 must store or send the states somewhere so that they can be retrieved later.
 There are several built-in result backends to choose from: SQLAlchemy/Django ORM,
-Memcached, RabbitMQ (amqp), MongoDB, and Redis -- or you can define your own.
+Memcached, RabbitMQ/QPid (rpc), MongoDB, and Redis -- or you can define your own.
 
 No backend works well for every use case.
 You should read about the strengths and weaknesses of each backend, and choose
 the most appropriate for your needs.
 
-
 .. seealso::
 
     :ref:`conf-result-backend`
 
-RabbitMQ Result Backend
-~~~~~~~~~~~~~~~~~~~~~~~
+RPC Result Backend (RabbitMQ/QPid)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The RabbitMQ result backend (amqp) is special as it does not actually *store*
+The RPC result backend (`rpc://`) is special as it does not actually *store*
 the states, but rather sends them as messages.  This is an important difference as it
-means that a result *can only be retrieved once*; If you have two processes
-waiting for the same result, one of the processes will never receive the
-result!
+means that a result *can only be retrieved once*, and *only by the client
+that initiated the task*. Two different processes can not wait for the same result.
 
 Even with that limitation, it is an excellent choice if you need to receive
 state changes in real-time.  Using messaging means the client does not have to
 poll for new states.
 
-There are several other pitfalls you should be aware of when using the
-RabbitMQ result backend:
-
-* Every new task creates a new queue on the server, with thousands of tasks
-  the broker may be overloaded with queues and this will affect performance in
-  negative ways. If you're using RabbitMQ then each queue will be a separate
-  Erlang process, so if you're planning to keep many results simultaneously you
-  may have to increase the Erlang process limit, and the maximum number of file
-  descriptors your OS allows.
-
-* Old results will be cleaned automatically, based on the
-  :setting:`CELERY_TASK_RESULT_EXPIRES` setting.  By default this is set to
-  expire after 1 day: if you have a very busy cluster you should lower
-  this value.
-
-For a list of options supported by the RabbitMQ result backend, please see
-:ref:`conf-amqp-result-backend`.
-
+The messages are transient (non-persistent) by default, so the results will
+disappear if the broker restarts. You can configure the result backend to send
+persistent messages using the :setting:`CELERY_RESULT_PERSISTENT` setting.
 
 Database Result Backend
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -753,7 +737,6 @@ limitations.
   means the transaction will not see changes by other transactions until the
   transaction is committed.  It is recommended that you change to the
   `READ-COMMITTED` isolation level.
-
 
 .. _task-builtin-states:
 
@@ -1192,15 +1175,12 @@ Handlers
 
     The return value of this handler is ignored.
 
-on_retry
-~~~~~~~~
-
 .. _task-how-they-work:
 
 How it works
 ============
 
-Here comes the technical details, this part isn't something you need to know,
+Here come the technical details. This part isn't something you need to know,
 but you may be interested.
 
 All defined tasks are listed in a registry.  The registry contains
@@ -1327,7 +1307,7 @@ Make your design asynchronous instead, for example by using *callbacks*.
 
     def update_page_info(url):
         # fetch_page -> parse_page -> store_page
-        chain = fetch_page.s() | parse_page.s() | store_page_info.s(url)
+        chain = fetch_page.s(url) | parse_page.s() | store_page_info.s(url)
         chain()
 
     @app.task()
@@ -1359,8 +1339,8 @@ Granularity
 -----------
 
 The task granularity is the amount of computation needed by each subtask.
-In general it is better to split the problem up into many small tasks, than
-have a few long running tasks.
+In general it is better to split the problem up into many small tasks rather
+than have a few long running tasks.
 
 With smaller tasks you can process more tasks in parallel and the tasks
 won't run long enough to block the worker from processing other waiting tasks.
@@ -1528,7 +1508,7 @@ depending on state from the current transaction*:
 Example
 =======
 
-Let's take a real world example; A blog where comments posted needs to be
+Let's take a real world example: a blog where comments posted need to be
 filtered for spam.  When the comment is created, the spam filter runs in the
 background, so the user doesn't have to wait for it to finish.
 
